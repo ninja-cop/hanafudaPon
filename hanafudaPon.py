@@ -2,6 +2,48 @@ import pyxel
 import random
 import math
 
+class Particle:
+    def __init__(self, x, y, color=None):
+        self.x = x
+        self.y = y
+        self.vx = random.uniform(-3, 3)
+        self.vy = random.uniform(-4, -1)
+        self.gravity = 0.1
+        self.life = random.randint(30, 60)  # フレーム数
+        self.max_life = self.life
+        self.color = color if color else random.choice([8, 9, 10, 11, 12, 14, 15])
+        self.size = random.randint(1, 3)
+    
+    def update(self):
+        self.x += self.vx
+        self.y += self.vy
+        self.vy += self.gravity
+        self.life -= 1
+        
+        # 軽い空気抵抗
+        self.vx *= 0.98
+        
+        return self.life > 0
+    
+    def draw(self):
+        # ライフに応じて透明度を調整（色の明度で表現）
+        alpha_ratio = self.life / self.max_life
+        if alpha_ratio > 0.7:
+            color = self.color
+        elif alpha_ratio > 0.4:
+            color = max(0, self.color - 1)
+        elif alpha_ratio > 0.2:
+            color = max(0, self.color - 2)
+        else:
+            color = 0
+        
+        if self.size == 1:
+            pyxel.pset(int(self.x), int(self.y), color)
+        elif self.size == 2:
+            pyxel.rect(int(self.x), int(self.y), 2, 2, color)
+        else:
+            pyxel.rect(int(self.x), int(self.y), 3, 3, color)
+
 class HanafudaPon:
     def __init__(self):
         pyxel.init(256, 240, title="Hanafuda Pon")  # 元の画面比率に戻す
@@ -22,12 +64,15 @@ class HanafudaPon:
         self.selected_cards = []  # 選択中の花札
         self.score = 0
         self.spawn_timer = 0
-        self.spawn_interval = 30  # フレーム数（1秒）
+        self.spawn_interval = 90  # フレーム数（3秒）
         self.game_over = False
         self.bonus_timer = 0
         self.bonus_multiplier = 1
         self.combo_message = ""  # 役成立メッセージ
         self.combo_timer = 0     # メッセージ表示時間
+        
+        # パーティクルシステム
+        self.particles = []
         
         # 花札の種類（月ごと、4枚ずつ）
         self.months = ["松", "梅", "桜", "藤", "菖", "牡", "萩", "芒", "菊", "紅", "柳", "桐"]
@@ -38,16 +83,16 @@ class HanafudaPon:
         # 花札の役定義（カードタイプと月の組み合わせ）
         # 各月のカード構成: [光札, タン札, タネ札, カス札]の順
         self.card_types = {
-            "松": ["光", "赤タン", "タネ", "カス"],   # 1月
-            "梅": ["タネ", "赤タン", "カス", "カス"], # 2月
-            "桜": ["光", "赤タン", "タネ", "カス"],   # 3月
+            "松": ["光", "Akatan", "タネ", "カス"],   # 1月
+            "梅": ["タネ", "Akatan", "カス", "カス"], # 2月
+            "桜": ["光", "Akatan", "タネ", "カス"],   # 3月
             "藤": ["タネ", "タン", "カス", "カス"], # 4月
             "菖": ["タネ", "タン", "カス", "カス"], # 5月
-            "牡": ["タネ", "青タン", "カス", "カス"], # 6月
+            "牡": ["タネ", "Aotan", "カス", "カス"], # 6月
             "萩": ["タネ", "タン", "タネ", "カス"], # 7月（猪）
             "芒": ["光", "タネ", "タン", "カス"],   # 8月
-            "菊": ["タネ", "青タン", "カス", "カス"], # 9月
-            "紅": ["タネ", "青タン", "カス", "カス"], # 10月（鹿）
+            "菊": ["タネ", "Aotan", "カス", "カス"], # 9月
+            "紅": ["タネ", "Aotan", "カス", "カス"], # 10月（鹿）
             "柳": ["光", "タン", "タネ", "カス"],   # 11月（雨）
             "桐": ["光", "タン", "カス", "カス"]    # 12月
         }
@@ -95,7 +140,7 @@ class HanafudaPon:
         イメージバンク1: 7～12月の花札（4～6段目）
         """
         try:
-            # my_resource.pyxres ファイルを読み込み
+            # hanafuda_resource.pyxres ファイルを読み込み
             pyxel.load("my_resource.pyxres")
             self.use_image_bank = True
             print("my_resource.pyxres を読み込みました")
@@ -111,6 +156,23 @@ class HanafudaPon:
             for card_num in range(4):  # 各月4枚
                 self.deck.append((month, month_idx, card_num))
         random.shuffle(self.deck)
+    
+    def create_particles(self, x, y, card_color=None, is_special=False):
+        """パーティクルを生成"""
+        particle_count = 15 if is_special else 8
+        
+        # 特殊役の場合はより派手な色を使用
+        if is_special:
+            colors = [8, 9, 10, 11, 12, 14, 15]  # より鮮やかな色
+        else:
+            colors = [7, 8, 10, 11, 14]  # 通常の色
+        
+        for _ in range(particle_count):
+            # カードの中央付近からパーティクルを発生
+            px = x + self.card_width // 2 + random.randint(-8, 8)
+            py = y + self.card_height // 2 + random.randint(-8, 8)
+            color = random.choice(colors)
+            self.particles.append(Particle(px, py, color))
     
     def update(self):
         if self.game_state == "title":
@@ -132,6 +194,9 @@ class HanafudaPon:
 
     def update_playing(self):
         """プレイ中の更新"""
+        # パーティクルの更新
+        self.particles = [p for p in self.particles if p.update()]
+        
         # ボーナスタイム管理
         if self.bonus_timer > 0:
             self.bonus_timer -= 1
@@ -165,6 +230,9 @@ class HanafudaPon:
 
     def update_game_over(self):
         """ゲームオーバー画面の更新"""
+        # パーティクルの更新（ゲームオーバー画面でも継続）
+        self.particles = [p for p in self.particles if p.update()]
+        
         if pyxel.btnp(pyxel.KEY_RETURN) or pyxel.btnp(pyxel.MOUSE_BUTTON_LEFT):
             self.restart_game()
 
@@ -180,6 +248,7 @@ class HanafudaPon:
         self.bonus_multiplier = 1
         self.combo_message = ""
         self.combo_timer = 0
+        self.particles = []  # パーティクルもリセット
         self.init_deck()
     
     def spawn_card(self):
@@ -237,23 +306,24 @@ class HanafudaPon:
                         # 3枚選択されたら消去判定
                         if len(self.selected_cards) == 3:
                             self.check_completion()
-                            #pyxel.play(0, 2)
                         # 2枚選択されたら2枚役の判定も行う
                         elif len(self.selected_cards) == 2:
                             special_score, combo_name = self.check_special_combinations()
                             if special_score > 0:
                                 self.check_completion()
-                                #pyxel.play(0, 2)
                 break
     
     def check_completion(self):
         # 特殊役の判定
         special_score, combo_name = self.check_special_combinations()
         
+        is_special_combo = False
+        
         if special_score > 0:
             self.score += special_score * self.bonus_multiplier
             # 特殊役表示用のメッセージを設定
             self.show_combo_message(combo_name, special_score)
+            is_special_combo = True
             
             if special_score >= 1000:  # 高得点役の場合
                 self.bonus_timer = 600  # 10秒間
@@ -266,6 +336,10 @@ class HanafudaPon:
                 # 無効な組み合わせの場合、選択をリセットして終了
                 self.reset_selection()
                 return
+        
+        # パーティクル生成（カードが消える前に）
+        for card in self.selected_cards:
+            self.create_particles(card['x'], card['y'], is_special=is_special_combo)
         
         # 選択された花札を削除
         for card in self.selected_cards:
@@ -293,22 +367,44 @@ class HanafudaPon:
             card_type = self.card_types[month][card_num]
             selected_cards_info.append((month, card_num, card_type))
         
-        # 三光の特別判定（光札3枚の組み合わせ）
+        # 三光の特別判定（光札3枚の組み合わせ、重複OK）
         if len(self.selected_cards) == 3:
             light_count = 0
-            selected_light_cards = []
             
             for month, card_num, card_type in selected_cards_info:
                 if (month, card_num) in self.light_cards:
                     light_count += 1
-                    selected_light_cards.append((month, card_num))
             
             # 3枚全てが光札の場合
             if light_count == 3:
                 return 1000, "Sanko"
         
-        # 通常の役をチェック
+        # 青タンの特別判定（重複OK）
+        if len(self.selected_cards) == 3:
+            aotan_count = 0
+            for month, card_num, card_type in selected_cards_info:
+                if card_type == "Aotan":
+                    aotan_count += 1
+            
+            if aotan_count == 3:
+                return 800, "Aotan"
+        
+        # 赤タンの特別判定（重複OK）
+        if len(self.selected_cards) == 3:
+            akatan_count = 0
+            for month, card_num, card_type in selected_cards_info:
+                if card_type == "Akatan":
+                    akatan_count += 1
+            
+            if akatan_count == 3:
+                return 800, "Akatan"
+        
+        # 通常の役をチェック（猪鹿蝶、花見で一杯、月見で一杯は従来通り）
         for combo_name, combo_data in self.special_combinations.items():
+            # 青タンと赤タンは上で処理済みなのでスキップ
+            if combo_name in ["Aotan", "Akatan"]:
+                continue
+                
             required_cards = combo_data["cards"]
             score = combo_data["score"]
             requires_only = combo_data.get("requires_only", 3)
@@ -349,20 +445,6 @@ class HanafudaPon:
         self.combo_message = f"{combo_name} - {score}点!"
         self.combo_timer = 60  # 2秒間表示
     
-    def check_special_combinations_old(self, selected_months):
-        """旧版の役判定（削除予定）"""
-        for combo_name, combo_months in self.special_combinations.items():
-            if len(combo_months) == 3 and set(selected_months) == set(combo_months):
-                if combo_name == "Aotan" or combo_name == "Akatan":
-                    return 800
-                elif combo_name == "Inoshikacho":
-                    return 2000
-                elif combo_name == "Sanko":
-                    return 1000
-                elif combo_name == "Hanami" or combo_name == "sukimi":
-                    return 500
-        return 0
-    
     def reset_selection(self):
         for card in self.selected_cards:
             card['selected'] = False
@@ -372,6 +454,7 @@ class HanafudaPon:
         """ゲームをリスタート（タイトル画面に戻る）"""
         self.game_state = "title"
         self.title_timer = 0
+        self.particles = []  # パーティクルもクリア
     
     def draw(self):
         pyxel.cls(0)
@@ -385,7 +468,7 @@ class HanafudaPon:
 
     def draw_title(self):
         """タイトル画面の描画"""
-        pyxel.cls(3)  # 水色の背景
+        pyxel.cls(3)  # 濃い青の背景
         
         # タイトルロゴ
         title_text = "HANAFUDA PON"
@@ -405,13 +488,36 @@ class HanafudaPon:
             x = 40 + i * 30
             y = 100 + math.sin(self.title_timer * 0.05 + i * 0.5) * 5
             
-            # 装飾用の小さな花札
             month_idx = i * 2
             if month_idx < len(self.months):
-                month = self.months[month_idx]
-                pyxel.rect(x, y, 20, 32, 7)
-                pyxel.rectb(x, y, 20, 32, 1)
-                pyxel.text(x + 6, y + 12, month, 8)
+                if hasattr(self, 'use_image_bank') and self.use_image_bank:
+                    # リソース画像を使用して装飾用花札を描画
+                    card_num = 0  # 各月の最初のカード（光札など）を使用
+                    
+                    # 画像の位置を計算（ゲーム本体と同じロジック）
+                    if month_idx < 6:  # 1-6月
+                        img_bank = 0
+                        row = month_idx // 2
+                        col_base = (month_idx % 2) * 4
+                        img_x = (col_base + card_num) * self.card_width
+                        img_y = row * self.card_height
+                    else:  # 7-12月
+                        img_bank = 1
+                        adjusted_month = month_idx - 6
+                        row = adjusted_month // 2
+                        col_base = (adjusted_month % 2) * 4
+                        img_x = (col_base + card_num) * self.card_width
+                        img_y = row * self.card_height
+                    
+                    # 小さめのサイズで描画（縮小して表示）
+                    card_w, card_h = 32, 53
+                    pyxel.blt(x, y, img_bank, img_x, img_y, card_w, card_h, None, None, 0.6)
+                else:
+                    # 画像データがない場合は従来の描画方法
+                    month = self.months[month_idx]
+                    pyxel.rect(x, y, 20, 32, 7)
+                    pyxel.rectb(x, y, 20, 32, 1)
+                    pyxel.text(x + 6, y + 12, month, 8)
         
         # 操作説明
         instructions = [
@@ -481,12 +587,16 @@ class HanafudaPon:
                 num_text = str(card['card_num'] + 1)
                 pyxel.text(card['x'] + 2, card['y'] + 2, num_text, 8)
         
+        # パーティクルを描画
+        for particle in self.particles:
+            particle.draw()
+        
         # UI表示
         score_text = f"SCORE: {self.score:06d}"
-        pyxel.text(8, 227, score_text, 7)
+        pyxel.text(8, 230, score_text, 7)
         
         if self.bonus_timer > 0:
-            pyxel.text(8, 217, "BONUS x2!", 10)
+            pyxel.text(8, 220, "BONUS x2!", 10)
         
         # 役成立メッセージの表示
         if self.combo_message and self.combo_timer > 0:
