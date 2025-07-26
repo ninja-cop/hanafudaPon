@@ -541,6 +541,10 @@ class HanafudaPon:
                     pyxel.text(text_x, start_y + i * 10, instruction, color)
             else:
                 pyxel.text(text_x, start_y + i * 10, instruction, color)
+        
+        # クレジット表示
+        pyxel.text(190, 217, "(V)1.7", 7)
+        pyxel.text(190, 225, "(C)2025 Saizo", 7)
 
     def draw_playing(self):
         """プレイ中の描画"""
